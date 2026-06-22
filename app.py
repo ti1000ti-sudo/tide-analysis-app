@@ -9,23 +9,35 @@ import matplotlib.font_manager as fm
 import pandas as pd
 import os
 
-# --- 한글 폰트 설정 (서버 및 로컬 최적화) ---
-matplotlib.rcParams['axes.unicode_minus'] = False
-font_path = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'
-
-if os.path.exists(font_path):
-    fm.fontManager.addfont(font_path)
-    plt.rcParams['font.family'] = 'NanumGothic'
-else:
-    # 윈도우/맥 로컬 환경용
-    import platform
-    system_name = platform.system()
-    if system_name == "Windows":
-        plt.rcParams['font.family'] = 'Malgun Gothic'
-    elif system_name == "Darwin":
-        plt.rcParams['font.family'] = 'AppleGothic'
+# --- 한글 폰트 설정 (서버 캐시 제거 및 강제 적용) ---
+def setup_font():
+    # Matplotlib 폰트 캐시 삭제 (서버에서 폰트 새로고침)
+    cache_dir = matplotlib.get_cachedir()
+    for file in os.listdir(cache_dir):
+        if 'fontlist' in file:
+            try:
+                os.remove(os.path.join(cache_dir, file))
+            except:
+                pass
+    
+    font_path = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'
+    if os.path.exists(font_path):
+        fm.fontManager.addfont(font_path)
+        plt.rcParams['font.family'] = 'NanumGothic'
     else:
-        plt.rcParams['font.family'] = 'sans-serif'
+        # 윈도우/맥 로컬 환경용
+        import platform
+        sys_name = platform.system()
+        if sys_name == "Windows":
+            plt.rcParams['font.family'] = 'Malgun Gothic'
+        elif sys_name == "Darwin":
+            plt.rcParams['font.family'] = 'AppleGothic'
+        else:
+            plt.rcParams['font.family'] = 'sans-serif'
+    
+    matplotlib.rcParams['axes.unicode_minus'] = False
+
+setup_font()
 
 # --- 설정 ---
 TARGET_LEVEL = 300
@@ -55,7 +67,7 @@ def fetch_tide_data(formatted_date):
 st.set_page_config(page_title="런칭 시간 분석기", layout="centered")
 st.title("🌊 런칭 시간 분석기")
 
-target_date = st.date_input("분석할 날짜를 선택하세요", datetime.date.today())
+target_date = st.date_input("날짜를 선택하세요", datetime.date.today())
 formatted_date = target_date.strftime("%Y%m%d")
 
 items = fetch_tide_data(formatted_date)
@@ -116,5 +128,4 @@ else:
     ax.set_title("런칭 시간 분석 차트")
     ax.set_ylabel("수위(cm)")
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-    
     st.pyplot(fig)
