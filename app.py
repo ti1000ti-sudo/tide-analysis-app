@@ -5,19 +5,27 @@ import math
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib
+import matplotlib.font_manager as fm
 import pandas as pd
-import platform
+import os
 
-# --- 한글 폰트 설정 ---
-system_name = platform.system()
-if system_name == "Windows":
-    plt.rcParams['font.family'] = 'Malgun Gothic'
-elif system_name == "Darwin":
-    plt.rcParams['font.family'] = 'AppleGothic'
-else:
-    plt.rcParams['font.family'] = 'NanumGothic'
-
+# --- 한글 폰트 설정 (서버 및 로컬 최적화) ---
 matplotlib.rcParams['axes.unicode_minus'] = False
+font_path = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'
+
+if os.path.exists(font_path):
+    fm.fontManager.addfont(font_path)
+    plt.rcParams['font.family'] = 'NanumGothic'
+else:
+    # 윈도우/맥 로컬 환경용
+    import platform
+    system_name = platform.system()
+    if system_name == "Windows":
+        plt.rcParams['font.family'] = 'Malgun Gothic'
+    elif system_name == "Darwin":
+        plt.rcParams['font.family'] = 'AppleGothic'
+    else:
+        plt.rcParams['font.family'] = 'sans-serif'
 
 # --- 설정 ---
 TARGET_LEVEL = 300
@@ -47,11 +55,9 @@ def fetch_tide_data(formatted_date):
 st.set_page_config(page_title="런칭 시간 분석기", layout="centered")
 st.title("🌊 런칭 시간 분석기")
 
-# 날짜 선택
 target_date = st.date_input("분석할 날짜를 선택하세요", datetime.date.today())
 formatted_date = target_date.strftime("%Y%m%d")
 
-# 데이터 가져오기 및 분석
 items = fetch_tide_data(formatted_date)
 
 if not items:
@@ -107,7 +113,7 @@ else:
     ax.plot(plot_times, plot_tides, color='blue', label='수위(cm)')
     ax.axhline(y=TARGET_LEVEL, color='red', linestyle='--', label=f'{TARGET_LEVEL}cm')
     ax.legend()
-    ax.set_title("Launching Time Prediction")
+    ax.set_title("런칭 시간 분석 차트")
     ax.set_ylabel("수위(cm)")
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
     
