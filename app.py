@@ -9,37 +9,34 @@ import matplotlib.font_manager as fm
 import pandas as pd
 import os
 
-# --- 한글 폰트 설정 (서버 캐시 제거 및 강제 적용) ---
+# --- 폰트 캐시 강제 삭제 및 나눔 폰트 설정 ---
 def setup_font():
-    # Matplotlib 폰트 캐시 삭제 (서버에서 폰트 새로고침)
-    cache_dir = matplotlib.get_cachedir()
-    for file in os.listdir(cache_dir):
-        if 'fontlist' in file:
-            try:
-                os.remove(os.path.join(cache_dir, file))
-            except:
-                pass
+    # 폰트 캐시 강제 삭제
+    cachedir = matplotlib.get_cachedir()
+    if os.path.exists(cachedir):
+        for f in os.listdir(cachedir):
+            if f.startswith('fontlist'):
+                try: os.remove(os.path.join(cachedir, f))
+                except: pass
     
+    # 폰트 경로 설정
     font_path = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'
     if os.path.exists(font_path):
         fm.fontManager.addfont(font_path)
         plt.rcParams['font.family'] = 'NanumGothic'
     else:
-        # 윈도우/맥 로컬 환경용
+        # 로컬 환경 대응
         import platform
         sys_name = platform.system()
-        if sys_name == "Windows":
-            plt.rcParams['font.family'] = 'Malgun Gothic'
-        elif sys_name == "Darwin":
-            plt.rcParams['font.family'] = 'AppleGothic'
-        else:
-            plt.rcParams['font.family'] = 'sans-serif'
+        if sys_name == "Windows": plt.rcParams['font.family'] = 'Malgun Gothic'
+        elif sys_name == "Darwin": plt.rcParams['font.family'] = 'AppleGothic'
+        else: plt.rcParams['font.family'] = 'sans-serif'
     
     matplotlib.rcParams['axes.unicode_minus'] = False
 
 setup_font()
 
-# --- 설정 ---
+# --- 앱 로직 ---
 TARGET_LEVEL = 300
 
 def interpolate_tide_cosine(h1, h2, total_minutes, current_minute):
@@ -63,7 +60,6 @@ def fetch_tide_data(formatted_date):
         st.error(f"데이터를 가져오는 중 오류 발생: {e}")
         return []
 
-# --- 웹 UI ---
 st.set_page_config(page_title="런칭 시간 분석기", layout="centered")
 st.title("🌊 런칭 시간 분석기")
 
@@ -73,56 +69,41 @@ formatted_date = target_date.strftime("%Y%m%d")
 items = fetch_tide_data(formatted_date)
 
 if not items:
-    st.warning("해당 날짜에 데이터가 없거나 서버 응답이 없습니다.")
+    st.warning("데이터가 없습니다.")
 else:
     st.write(f"### 📅 {formatted_date} 물때 정보")
     
-    tide_data = []
-    for i in items:
-        val = float(i.get("predcTdlvVl", 0))
-        tide_type = "만조" if val > 400 else "간조"
-        tide_data.append({"시간": i['predcDt'], "수위(cm)": val, "구분": tide_type})
-    
+    # 데이터 표
+    tide_data = [{"시간": i['predcDt'], "수위(cm)": float(i.get("predcTdlvVl", 0)), "구분": "만조" if float(i.get("predcTdlvVl", 0)) > 400 else "간조"} for i in items]
     st.table(pd.DataFrame(tide_data))
 
     # 분석 로직
     plot_times, plot_tides = [], []
     entry_times, exit_times = [], []
-
     for i in range(len(items) - 1):
-        t1 = datetime.datetime.strptime(items[i]['predcDt'], "%Y-%m-%d %H:%M")
-        t2 = datetime.datetime.strptime(items[i + 1]['predcDt'], "%Y-%m-%d %H:%M")
-        h1, h2 = float(items[i]['predcTdlvVl']), float(items[i + 1]['predcTdlvVl'])
+        t1, t2 = datetime.datetime.strptime(items[i]['predcDt'], "%Y-%m-%d %H:%M"), datetime.datetime.strptime(items[i+1]['predcDt'], "%Y-%m-%d %H:%M")
+        h1, h2 = float(items[i]['predcTdlvVl']), float(items[i+1]['predcTdlvVl'])
         diff_min = int((t2 - t1).total_seconds() / 60)
         prev_h = None
-
         for m in range(diff_min + 1):
             h = interpolate_tide_cosine(h1, h2, diff_min, m)
             curr_t = t1 + datetime.timedelta(minutes=m)
-            plot_times.append(curr_t)
-            plot_tides.append(h)
-
+            plot_times.append(curr_t); plot_tides.append(h)
             if prev_h is not None:
-                if prev_h < TARGET_LEVEL <= h:
-                    ratio = (TARGET_LEVEL - prev_h) / (h - prev_h)
-                    ex = curr_t - datetime.timedelta(minutes=1) + datetime.timedelta(seconds=ratio * 60)
-                    entry_times.append(ex)
-                elif prev_h >= TARGET_LEVEL > h:
-                    ratio = (prev_h - TARGET_LEVEL) / (prev_h - h)
-                    ex = curr_t - datetime.timedelta(minutes=1) + datetime.timedelta(seconds=ratio * 60)
-                    exit_times.append(ex)
+                if prev_h < TARGET_LEVEL <= h: entry_times.append(curr_t)
+                elif prev_h >= TARGET_LEVEL > h: exit_times.append(curr_t)
             prev_h = h
 
     st.write("### ✅ 분석 결과")
-    col1, col2 = st.columns(2)
-    with col1:
+    c1, c2 = st.columns(2)
+    with c1: 
         for et in entry_times: st.success(f"진입: {et.strftime('%H:%M:%S')}")
-    with col2:
+    with c2: 
         for xt in exit_times: st.warning(f"이탈: {xt.strftime('%H:%M:%S')}")
 
     # 그래프 출력
     fig, ax = plt.subplots(figsize=(8, 5))
-    ax.plot(plot_times, plot_tides, color='blue', label='수위(cm)')
+    ax.plot(plot_times, plot_tides, color='blue', label='수위')
     ax.axhline(y=TARGET_LEVEL, color='red', linestyle='--', label=f'{TARGET_LEVEL}cm')
     ax.legend()
     ax.set_title("런칭 시간 분석 차트")
